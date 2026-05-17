@@ -72,17 +72,38 @@ def fetch_market_data():
 
 df = fetch_market_data()
 
-# Live Chart
-fig = go.Figure(data=[go.Candlestick(
-    x=df.index, open=df['open'], high=df['high'], low=df['low'], close=df['close'],
-    increasing_line_color='#00ff88', decreasing_line_color='#ff3366'
-)])
-fig.update_layout(
-    xaxis_rangeslider_visible=False, height=500, 
-    template="plotly_dark", title="XAUUSD Live 5m Price Action",
-    margin=dict(l=20, r=20, t=40, b=20)
-)
-st.plotly_chart(fig, use_container_width=True)
+# Live Chart & Real-Time TradingView Tabs
+tab1, tab2 = st.tabs(["📊 Interactive Live TradingView (Real-Time)", "📈 System Candlestick Data (Plotly 5m Feed)"])
+
+with tab1:
+    tradingview_html = """
+    <div class="tradingview-widget-container" style="height:500px;width:100%">
+      <div id="tradingview_xauusd" style="height:500px;width:100%"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+      <script type="text/javascript">
+      new TradingView.widget({
+        "autosize": true,
+        "symbol": "OANDA:XAU_USD",
+        "interval": "5",
+        "timezone": "Etc/UTC",
+        "theme": "dark",
+        "style": "1",
+        "locale": "en",
+        "toolbar_bg": "#1e222d",
+        "enable_publishing": false,
+        "hide_side_toolbar": false,
+        "allow_symbol_change": true,
+        "studies": ["RSI@tv-basicstudies", "MASimple@tv-basicstudies"],
+        "container_id": "tradingview_xauusd"
+      });
+      </script>
+    </div>
+    """
+    st.components.v1.html(tradingview_html, height=510)
+
+with tab2:
+    st.plotly_chart(fig, use_container_width=True)
+
 
 # Controls
 col_ctrl1, col_ctrl2 = st.columns([2, 1])
