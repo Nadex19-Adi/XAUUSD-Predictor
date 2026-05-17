@@ -1,0 +1,41 @@
+# Virtual environment
+.venv/
+venv/
+ENV/
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Datasets and Large CSV Files
+*.zip
+data/*.csv
+data/xauusd_features.csv
+*.csv
+data/chromadb/
+*.sqlite3
+*.sqlite
+
+# Model Weight Artifacts
+models/*.json
+models/*.bin
+models/xauusd_model*
+data/models/
+
+# Environmental Variables
+.env
+.env.local
+
+# IDE Configs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# Matplotlib generated diagrams (we can commit them if they are part of the doc, but let's exclude intermediate figures unless we want them on github. Actually, committing flowchart.png, mindmap.png, and usecase.png is good because they show off the project design!)
+# So we do NOT ignore *.png
