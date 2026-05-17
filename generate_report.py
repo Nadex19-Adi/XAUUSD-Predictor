@@ -355,7 +355,7 @@ def main():
     r_lnk.font.bold = True
     r_lnk.font.color.rgb = RGBColor(26, 54, 93)
     
-    r_url = p_link.add_run("https://github.com/Nadex19-Adi/XAUUSD-Predictor")
+    r_url = p_link.add_run("https://github.com/Aditya-2JR23CI001/XAUUSD-RAG-Predictor")
     r_url.font.name = 'Segoe UI'
     r_url.font.size = Pt(11)
     r_url.font.bold = True

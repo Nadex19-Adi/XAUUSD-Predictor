@@ -1,41 +1,33 @@
-# Virtual environment
-.venv/
-venv/
-ENV/
+# Ignore large dataset files and temporary artifacts
 
-# Python Cache
+# Datasets (big CSV/ZIP files)
+datasets/
+data/chromadb/
+*.zip
+*.csv
+
+# Model binaries (optional, can be large – you may keep them versioned if needed)
+models/*.bst
+models/*.json
+
+# Python cache
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
 
-# Datasets and Large CSV Files
-*.zip
-data/*.csv
-data/xauusd_features.csv
-*.csv
-data/chromadb/
-*.sqlite3
-*.sqlite
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints/
 
-# Model Weight Artifacts
-models/*.json
-models/*.bin
-models/xauusd_model*
-data/models/
-
-# Environmental Variables
-.env
-.env.local
-
-# IDE Configs
+# VSCode / IDE settings
 .vscode/
 .idea/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.swp
 
-# Matplotlib generated diagrams (we can commit them if they are part of the doc, but let's exclude intermediate figures unless we want them on github. Actually, committing flowchart.png, mindmap.png, and usecase.png is good because they show off the project design!)
-# So we do NOT ignore *.png
+# Environment files
+.env
+.env.*
+
+# API folder
+api/
+
+# Temporary files
+*.log
+*.tmp

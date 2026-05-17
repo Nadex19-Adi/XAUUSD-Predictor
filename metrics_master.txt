@@ -1,33 +1,29 @@
 XAUUSD Master Model v2.0 — Training Results
 ==================================================
-Date: 2026-05-07 16:28
+Date: 2026-05-18 00:23
 Features: 22
 Target: target_3bar
-Train Size: 1344588 | Test Size: 336147
+Train Size: 304 | Test Size: 77
 
 [ALL SIGNALS]
-Train Accuracy: 0.5746
-Test Accuracy:  0.5280
-Test Precision: 0.5228
-Test Recall:    0.5229
-Overfit Gap:    0.0466
+Train Accuracy: 0.7928
+Test Accuracy:  0.4805
+Test Precision: 0.4259
+Test Recall:    0.7188
+Overfit Gap:    0.3122
 
 [CONFIDENCE FILTERED]
-55% confidence: Acc=0.5575, Trades=132805
-60% confidence: Acc=0.6628, Trades=26488
-65% confidence: Acc=0.8392, Trades=10589
-70% confidence: Acc=0.8854, Trades=8462
 
 [TOP FEATURES]
-  bb_position: 0.1282
-  returns: 0.1235
-  upper_wick_ratio: 0.0882
-  body_ratio: 0.0864
-  momentum_5: 0.0772
-  atr_percentile: 0.0571
-  lower_wick_ratio: 0.0545
-  macd: 0.0407
-  atr: 0.0396
-  macd_hist: 0.0392
+  macd_signal: 0.0892
+  ema_cross: 0.0821
+  macd_hist: 0.0797
+  returns: 0.0751
+  atr: 0.0673
+  atr_percentile: 0.0611
+  macd: 0.0587
+  momentum_5: 0.0583
+  rsi: 0.0583
+  macd_hist_roc: 0.0570
 
-Training Time: 0.70 minutes
+Training Time: 0.01 minutes
