@@ -17,23 +17,28 @@ def train_master_model():
     print("Loading features...")
     df = pd.read_csv(feature_path)
     
-    # 2. Advanced Feature Set (ALL normalized — no raw prices)
+    # 2. Selected Top 20 Feature Set (Filtered via RFE / Importance to prevent overfitting)
     feature_cols = [
-        # Core oscillators
-        'rsi', 'macd', 'macd_signal', 'macd_hist', 'atr', 'bb_width', 'returns',
-        # Momentum (Phase 1.1)
-        'rsi_roc', 'momentum_5', 'momentum_10', 'momentum_30', 'macd_hist_roc',
-        # Volume (Phase 1.1)
-        'volume_ratio', 'volume_roc',
-        # Multi-timeframe (Phase 1.2)
-        'ema_cross', 'trend_alignment', 'bb_position',
-        # Volatility regime (Phase 1.3)
-        'atr_percentile', 'bb_squeeze', 'body_ratio', 'upper_wick_ratio', 'lower_wick_ratio',
-        # Lagged & Rolling (Task 1)
-        'returns_lag1', 'returns_lag2', 'returns_lag4',
-        'rsi_roll_mean_10', 'rsi_roll_std_10',
-        'macd_hist_roll_mean_10', 'macd_hist_roll_std_10',
-        'returns_roll_mean_10', 'returns_roll_std_10',
+        'body_ratio',
+        'returns_roll_std_10',
+        'lower_wick_ratio',
+        'upper_wick_ratio',
+        'momentum_10',
+        'returns_roll_mean_10',
+        'atr_percentile',
+        'returns',
+        'atr',
+        'ema_cross',
+        'macd_signal',
+        'rsi_roll_mean_10',
+        'bb_squeeze',
+        'macd_hist_roll_mean_10',
+        'rsi_roll_std_10',
+        'macd',
+        'returns_lag1',
+        'macd_hist',
+        'bb_width',
+        'trend_alignment'
     ]
     
     # Check which features actually exist
@@ -63,16 +68,16 @@ def train_master_model():
     
     print(f"  Train: {X_train.shape} | Test: {X_test.shape}")
     
-    # 5. Regularized XGBoost
+    # 5. Regularized XGBoost (Hyperparameters optimized via sweep to target confidence performance)
     model = xgb.XGBClassifier(
         n_estimators=1000,
-        max_depth=5,
+        max_depth=4,
         learning_rate=0.03,
-        subsample=0.65,
-        colsample_bytree=0.65,
-        min_child_weight=15,
-        reg_alpha=0.3,
-        reg_lambda=2.0,
+        subsample=0.7,
+        colsample_bytree=0.7,
+        min_child_weight=10,
+        reg_alpha=0.1,
+        reg_lambda=1.0,
         tree_method='hist',
         device='cpu',
         n_jobs=-1,
