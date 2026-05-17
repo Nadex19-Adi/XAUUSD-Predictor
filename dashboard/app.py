@@ -58,18 +58,17 @@ def fetch_market_data():
                 return df
         except:
             continue
-    
     # High-fidelity Synthetic Fallback (Audit R4/R6)
-        import numpy as np
-        dates = pd.date_range(end=pd.Timestamp.now(), periods=500, freq="5min")
-        dates = dates[dates.dayofweek < 5] 
-        np.random.seed(42)
-        close = 2000.0 * np.exp(np.cumsum(np.random.normal(0, 0.0005, len(dates))))
-        df = pd.DataFrame({
-            'open': close * 0.999, 'high': close * 1.001,
-            'low': close * 0.998, 'close': close, 'volume': 1000
-        }, index=dates)
-        return df
+    import numpy as np
+    dates = pd.date_range(end=pd.Timestamp.now(), periods=500, freq="5min")
+    dates = dates[dates.dayofweek < 5] 
+    np.random.seed(42)
+    close = 2000.0 * np.exp(np.cumsum(np.random.normal(0, 0.0005, len(dates))))
+    df = pd.DataFrame({
+        'open': close * 0.999, 'high': close * 1.001,
+        'low': close * 0.998, 'close': close, 'volume': 1000
+    }, index=dates)
+    return df
 
 df = fetch_market_data()
 

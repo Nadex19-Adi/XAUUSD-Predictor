@@ -31,10 +31,11 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Initialize models
 rag = None
 model = None
+model_features = []
 
 @app.on_event("startup")
 def load_models():
-    global rag, model
+    global rag, model, model_features
     try:
         rag = MarketRAG()
         model = xgb.XGBClassifier()
@@ -44,6 +45,24 @@ def load_models():
             model_path = "models/xgb_model.json"
         model.load_model(model_path)
         print(f"[API] Model loaded from {model_path}")
+        
+        # Load features from metadata_latest.json
+        metadata_path = "models/metadata_latest.json"
+        if os.path.exists(metadata_path):
+            import json
+            with open(metadata_path, "r") as f:
+                meta = json.load(f)
+                model_features = meta.get("features", [])
+            print(f"[API] Loaded {len(model_features)} active features from metadata.")
+        else:
+            # Fallback to hardcoded list matching train_final.py
+            model_features = [
+                'body_ratio', 'returns_roll_std_10', 'lower_wick_ratio', 'upper_wick_ratio',
+                'momentum_10', 'returns_roll_mean_10', 'atr_percentile', 'returns', 'atr',
+                'ema_cross', 'macd_signal', 'rsi_roll_mean_10', 'bb_squeeze', 'macd_hist_roll_mean_10',
+                'rsi_roll_std_10', 'macd', 'returns_lag1', 'macd_hist', 'bb_width', 'trend_alignment'
+            ]
+            print("[API] Warning: metadata_latest.json not found. Using fallback features list.")
     except Exception as e:
         print(f"[API] Warning: Model load failed: {e}")
 
@@ -116,42 +135,20 @@ def predict(request: Request, req: PredictRequest, api_key: APIKey = Depends(get
         recency_weight=0.15
     )
     
-    # Build feature vector (v2.0 — 22 advanced features)
-    feature_dict = {
-        # Core
-        'rsi': indicators['rsi'],
-        'macd': indicators['macd'],
-        'macd_signal': indicators['macd_signal'],
-        'macd_hist': indicators['macd_hist'],
-        'atr': indicators['atr'],
-        'bb_width': indicators['bb_width'],
-        'returns': indicators['returns'],
-        # Momentum
-        'rsi_roc': indicators.get('rsi_roc', 0),
-        'momentum_5': indicators.get('momentum_5', 0),
-        'momentum_10': indicators.get('momentum_10', 0),
-        'momentum_30': indicators.get('momentum_30', 0),
-        'macd_hist_roc': indicators.get('macd_hist_roc', 0),
-        # Volume
-        'volume_ratio': indicators.get('volume_ratio', 1.0),
-        'volume_roc': indicators.get('volume_roc', 0),
-        # Multi-timeframe
-        'ema_cross': indicators.get('ema_cross', 0),
-        'trend_alignment': indicators.get('trend_alignment', 0),
-        'bb_position': indicators.get('bb_position', 0.5),
-        # Volatility regime
-        'atr_percentile': indicators.get('atr_percentile', 0.5),
-        'bb_squeeze': indicators.get('bb_squeeze', 0),
-        'body_ratio': indicators.get('body_ratio', 0.5),
-        'upper_wick_ratio': indicators.get('upper_wick_ratio', 0),
-        'lower_wick_ratio': indicators.get('lower_wick_ratio', 0),
-    }
+    # Build feature vector dynamically aligned with active model features
+    aligned_dict = {}
+    for f in model_features:
+        val = indicators.get(f, 0.0)
+        # NaN and Inf handling
+        if pd.isna(val) or not np.isfinite(val):
+            val = 0.0
+        aligned_dict[f] = val
+        
+    features = pd.DataFrame([aligned_dict])
     
-    features = pd.DataFrame([feature_dict])
-    
-    # Predict
-    pred = model.predict(features.values)[0]
-    proba = model.predict_proba(features.values)[0]
+    # Predict with explicit column names
+    pred = model.predict(features)[0]
+    proba = model.predict_proba(features)[0]
     
     direction = "UP" if pred == 1 else "DOWN"
     confidence = float(max(proba))
