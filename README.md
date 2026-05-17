@@ -3,19 +3,20 @@
 A **machine‑learning pipeline** that predicts the direction of the XAU/USD (Gold) spot price on a 5‑minute timeframe.
 
 ## Features
-- **Feature engineering** with over 30 technical indicators (RSI, MACD, Bollinger Bands, ATR, volume ratios, multi‑time‑frame EMA crosses, etc.)
-- **Sharded ChromaDB vector store** for fast similarity look‑ups (RAG‑style market memory)
-- **XGBoost classifier** with regularisation and confidence‑filtering to surface high‑conviction trades
-- **Time‑series aware train/validation split** (80/20 chronological split) and optional walk‑forward validation
-- **Automated report generation** (`generate_report.py`) that produces a polished Word document with charts, tables, and a mind‑map.
+- Feature engineering with >30 technical indicators (RSI, MACD, Bollinger Bands, ATR, volume ratios, multi‑time‑frame EMA crosses, etc.)
+- Sharded ChromaDB vector store for fast similarity look‑ups (RAG‑style market memory)
+- XGBoost classifier with regularisation and confidence‑filtering to surface high‑conviction trades
+- Time‑series aware train/validation split (80/20 chronological) and optional walk‑forward validation
+- Automated report generation (`generate_report.py`) that produces a polished Word document with charts, tables, and a mind‑map.
 
 ## Quick Start
+
 ```bash
 # 1️⃣ Install dependencies
 pip install -r requirements.txt
 
 # 2️⃣ Generate features (if not already present)
-python data/feature_engineering.py   # create data/xauusd_features.csv
+python data/feature_engineering.py   # creates data/xauusd_features.csv
 
 # 3️⃣ Train the master model
 python train_final.py
@@ -25,6 +26,7 @@ python generate_report.py
 ```
 
 ## Project Structure
+
 ```
 XAUUSD‑Predictor/
 ├─ api/                # FastAPI endpoints (optional)
@@ -36,9 +38,19 @@ XAUUSD‑Predictor/
 ├─ training/           # Training utilities
 ├─ generate_report.py  # Builds the Word report
 ├─ todo_boost_accuracy.md  # Accuracy‑boost checklist (tracked)
-├─ README.md           # ⬅ this file
-└─ .gitignore          # ⬅ ignore large data files
+├─ README.md
+└─ .gitignore
 ```
+
+## Generating the Report
+
+The `generate_report.py` script creates a Word document (`report.docx`) containing:
+- Model performance metrics
+- Feature importance bar chart
+- Confidence‑filtered trade statistics
+- A mind‑map visualising the workflow
+
+Run it after training to capture the latest results.
 
 ## Contributing
 1. Fork the repo.

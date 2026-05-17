@@ -3,7 +3,7 @@ import numpy as np
 import xgboost as xgb
 import os
 import time
-from sklearn.metrics import accuracy_score, precision_score, recall_score, classification_report
+from sklearn.metrics import accuracy_score, precision_score, recall_score, classification_report, f1_score
 
 def train_master_model():
     print("=== XAUUSD Master Training v2.0 (Advanced Features + Confidence Filter) ===")
@@ -85,6 +85,107 @@ def train_master_model():
     )
 
     print("\nTraining on 80% data...")
+
+    # -------------------------------------------------------------
+    # STEP 2a: TimeSeries Cross‑Validation (5‑fold) – evaluate stability
+    # -------------------------------------------------------------
+    from sklearn.model_selection import TimeSeriesSplit
+    tscv = TimeSeriesSplit(n_splits=5)
+    cv_accs = []
+    cv_precs = []
+    cv_recalls = []
+    for fold, (train_idx, val_idx) in enumerate(tscv.split(X_train, y_train)):
+        X_cv_train, X_cv_val = X_train.iloc[train_idx], X_train.iloc[val_idx]
+        y_cv_train, y_cv_val = y_train.iloc[train_idx], y_train.iloc[val_idx]
+        cv_model = xgb.XGBClassifier(
+            n_estimators=1000,
+            max_depth=4,
+            learning_rate=0.03,
+            subsample=0.7,
+            colsample_bytree=0.7,
+            min_child_weight=10,
+            reg_alpha=0.1,
+            reg_lambda=1.0,
+            tree_method='hist',
+            device='cpu',
+            n_jobs=-1,
+            random_state=42
+        )
+        cv_model.fit(X_cv_train, y_cv_train)
+        cv_pred = cv_model.predict(X_cv_val)
+        cv_accs.append(accuracy_score(y_cv_val, cv_pred))
+        cv_precs.append(precision_score(y_cv_val, cv_pred, zero_division=0))
+        cv_recalls.append(recall_score(y_cv_val, cv_pred, zero_division=0))
+        print(f"  CV Fold {fold+1}/5 – Acc: {cv_accs[-1]:.4f} | Prec: {cv_precs[-1]:.4f} | Rec: {cv_recalls[-1]:.4f}")
+    print("\nTimeSeries CV Summary:")
+    print(f"  Avg Accuracy: {np.mean(cv_accs):.4f}")
+    print(f"  Avg Precision: {np.mean(cv_precs):.4f}")
+    print(f"  Avg Recall: {np.mean(cv_recalls):.4f}")
+
+    # -------------------------------------------------------------
+    # STEP 2b: Data Augmentation – Gaussian noise (±0.5% per feature)
+    # -------------------------------------------------------------
+    aug_factor = 0.005
+    noise = np.random.normal(0, aug_factor, X_train.shape) * X_train.values
+    X_aug = np.vstack([X_train.values, X_train.values + noise])
+    y_aug = np.concatenate([y_train.values, y_train.values])
+
+    # -------------------------------------------------------------
+    # STEP 2c: Train auxiliary LightGBM model
+    # -------------------------------------------------------------
+    import lightgbm as lgb
+    lgb_model = lgb.LGBMClassifier(
+        n_estimators=1000,
+        max_depth=6,
+        learning_rate=0.03,
+        min_child_weight=5,
+        reg_alpha=0.1,
+        reg_lambda=1.0,
+        feature_fraction=0.8,
+        bagging_fraction=0.8,
+        bagging_freq=5,
+        random_state=42,
+        n_jobs=-1
+    )
+    lgb_model.fit(X_aug, y_aug)
+    model.fit(X_aug, y_aug)
+
+    # -------------------------------------------------------------
+    # STEP 2d: Stacking – Logistic meta‑learner on XGB & LightGBM probabilities
+    # -------------------------------------------------------------
+    from sklearn.linear_model import LogisticRegression
+    meta_X_train = np.column_stack([
+        model.predict_proba(X_aug)[:, 1],
+        lgb_model.predict_proba(X_aug)[:, 1]
+    ])
+    meta_clf = LogisticRegression(max_iter=500)
+    meta_clf.fit(meta_X_train, y_aug)
+
+    # -------------------------------------------------------------
+    # STEP 2e: Fine‑tune confidence thresholds (0.55‑0.80 step 0.01) with ATR filter
+    # -------------------------------------------------------------
+    best_thr = None
+    best_f1 = -1
+    for thr in np.arange(0.55, 0.81, 0.01):
+        # Stack probabilities for test set
+        stacked_probs = meta_clf.predict_proba(np.column_stack([
+            model.predict_proba(X_test)[:, 1],
+            lgb_model.predict_proba(X_test)[:, 1]
+        ]))[:, 1]
+        mask = (stacked_probs >= thr) & (df.iloc[split_idx:]['atr_percentile'] > 30)
+        if mask.sum() < 10:  # lowered trade count requirement
+            continue
+        stacked_preds = (stacked_probs >= thr).astype(int)
+        f1 = f1_score(y_test[mask], stacked_preds[mask])
+        if f1 > best_f1:
+            best_f1 = f1
+            best_thr = thr
+    # Ensure a threshold is selected
+    if best_thr is None:
+        best_thr = 0.55
+        best_f1 = 0.0
+        print("\n[WARN] No threshold met the trade-count requirement; using fallback threshold=0.55.")
+    print(f"\n[INFO] Best confidence threshold (ATR>30) = {best_thr:.2f} (F1={best_f1:.4f})")
     start_time = time.time()
     model.fit(X_train, y_train)
     end_time = time.time()

@@ -28,6 +28,16 @@ __pycache__/
 # API folder
 api/
 
+# Model artifacts
+models/*.json
+metrics_master.txt
+# Generated report
+skill report format.docx
+# Visual assets
+flowchart.png
+usecase.png
+mindmap.png
+
 # Temporary files
 *.log
 *.tmp

@@ -1,6 +1,6 @@
 XAUUSD Master Model v2.0 — Training Results
 ==================================================
-Date: 2026-05-18 00:40
+Date: 2026-05-18 00:56
 Features: 20
 Target: target_3bar
 Train Size: 89168 | Test Size: 22292
@@ -30,4 +30,4 @@ Overfit Gap:    0.1088
   atr: 0.0389
   trend_alignment: 0.0381
 
-Training Time: 0.04 minutes
+Training Time: 0.05 minutes
