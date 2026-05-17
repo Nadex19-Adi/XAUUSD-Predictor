@@ -142,11 +142,11 @@ if st.button("🚀 Run Deep Analysis"):
                 res = response.json()
                 
                 # 3. Main Prediction Metrics
-                m1, m2, m3 = st.columns(3)
-                direction_color = "inverse" if res['direction'] == "UP" else "normal"
+                m1, m2, m3, m4 = st.columns(4)
                 m1.metric("PREDICTED MOVE", res['direction'])
                 m2.metric("PROBABILITY", f"{res['confidence']*100:.1f}%")
-                m3.metric("TRADE ZONE", f"TP: {res['tp']} | SL: {res['sl']}")
+                m3.metric("TIME HORIZON", "15 MINS (3 Bars)")
+                m4.metric("TRADE ZONE", f"TP: {res['tp']} | SL: {res['sl']}")
                 
                 # 4. RAG Insights
                 st.markdown("---")
