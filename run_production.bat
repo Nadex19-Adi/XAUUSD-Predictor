@@ -9,7 +9,7 @@ echo ===================================================
 echo.
 
 echo [1/3] Starting FastAPI Backend on port 8000...
-start "XAUUSD Predictor API" cmd /k "python -m uvicorn api.main:app --host 0.0.0.0 --port 8000"
+start "XAUUSD Predictor API" cmd /k "python -m uvicorn api.main:app --host 127.0.0.1 --port 8000"
 
 echo.
 echo [2/3] Waiting 5 seconds for API models to load...
@@ -23,8 +23,8 @@ echo.
 echo ===================================================
 echo ✅ Production services launched successfully!
 echo.
-echo 🌐 API Endpoint:   http://localhost:8000
-echo 🌐 Dashboard URL:  http://localhost:8501
+echo 🌐 API Endpoint:   http://127.0.0.1:8000
+echo 🌐 Dashboard URL:  http://127.0.0.1:8501
 echo ===================================================
 echo.
 echo Note: Live server logs are running in the newly opened windows.

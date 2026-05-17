@@ -28,7 +28,7 @@ st.title("🏆 XAUUSD Perfect Case Predictor")
 st.markdown("### Hybrid RAG + XGBoost + AI Vision System")
 
 # API Configuration
-API_URL = os.environ.get("API_URL", "http://localhost:8000/predict")
+API_URL = os.environ.get("API_URL", "http://127.0.0.1:8000/predict")
 API_KEY = os.environ.get("XAUUSD_API_KEY", "gold-standard-2026")
 
 # Sidebar: System Health & Info
