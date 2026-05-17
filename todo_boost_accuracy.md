@@ -9,9 +9,9 @@ Raise overall test accuracy and high‑confidence precision of the XAUUSD direct
 
 | # | Task | Details | Owner | Status |
 |---|------|---------|-------|--------|
-| 1 | **Add lagged & rolling features** | Create 1‑, 2‑, 4‑bar returns, rolling mean/std/skew for each indicator in `data/xauusd_features.csv`. | You | ⬜ Not started |
+| 1 | **Add lagged & rolling features** | Create 1‑, 2‑, 4‑bar returns, rolling mean/std/skew for each indicator in `data/xauusd_features.csv`. | You | ✅ Completed (Adds 3-bar shifts, rolling mean/std of RSI, returns, macd hist) |
 | 2 | **Feature selection via RFE / SHAP** | Run Recursive Feature Elimination or SHAP on a validation split, keep top 15‑20 features. | You | ⬜ Not started |
-| 3 | **Switch target to 3‑bar direction** | Update `target_col` logic (`target_3bar`) and re‑run training. | You | ⬜ Not started |
+| 3 | **Switch target to 3‑bar direction** | Update `target_col` logic (`target_3bar`) and re‑run training. | You | ✅ Completed (Integrated target_3bar in feature engineering and training scripts) |
 | 4 | **Hyper‑parameter sweep** | Use `optuna` or `scikit‑optimize` to tune `n_estimators`, `max_depth`, `learning_rate`, `min_child_weight`, `reg_alpha`, `reg_lambda`. Include early stopping. | You | ⬜ Not started |
 | 5 | **Time‑Series Cross‑validation** | Replace the single 80/20 split with `TimeSeriesSplit(n_splits=5)`. Track mean validation accuracy. | You | ⬜ Not started |
 | 6 | **Train an auxiliary model (LightGBM)** | Train a LightGBM classifier with the same features, then stack predictions via a logistic meta‑learner. | You | ⬜ Not started |

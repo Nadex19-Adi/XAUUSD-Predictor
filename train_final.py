@@ -29,6 +29,11 @@ def train_master_model():
         'ema_cross', 'trend_alignment', 'bb_position',
         # Volatility regime (Phase 1.3)
         'atr_percentile', 'bb_squeeze', 'body_ratio', 'upper_wick_ratio', 'lower_wick_ratio',
+        # Lagged & Rolling (Task 1)
+        'returns_lag1', 'returns_lag2', 'returns_lag4',
+        'rsi_roll_mean_10', 'rsi_roll_std_10',
+        'macd_hist_roll_mean_10', 'macd_hist_roll_std_10',
+        'returns_roll_mean_10', 'returns_roll_std_10',
     ]
     
     # Check which features actually exist

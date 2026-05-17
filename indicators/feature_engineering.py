@@ -123,6 +123,22 @@ def engineer_features(df: pd.DataFrame, output_path: str = "data/xauusd_features
     df['lower_wick_ratio'] = (df[['close', 'open']].min(axis=1) - df['low']) / candle_range.replace(0, 1)
     
     # =====================================================================
+    # NEW: LAGGED & ROLLING FEATURES (Task 1)
+    # =====================================================================
+    df['returns_lag1'] = df['returns'].shift(1)
+    df['returns_lag2'] = df['returns'].shift(2)
+    df['returns_lag4'] = df['returns'].shift(4)
+    
+    df['rsi_roll_mean_10'] = df['rsi'].rolling(10).mean()
+    df['rsi_roll_std_10'] = df['rsi'].rolling(10).std()
+    
+    df['macd_hist_roll_mean_10'] = df['macd_hist'].rolling(10).mean()
+    df['macd_hist_roll_std_10'] = df['macd_hist'].rolling(10).std()
+    
+    df['returns_roll_mean_10'] = df['returns'].rolling(10).mean()
+    df['returns_roll_std_10'] = df['returns'].rolling(10).std()
+
+    # =====================================================================
     # TARGETS
     # =====================================================================
     

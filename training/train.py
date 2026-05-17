@@ -73,12 +73,19 @@ def train_pipeline(df: pd.DataFrame, model_out: str = "models/xgb_model.json"):
         'sim_win_rate',         # RAG: win rate of similar patterns
         'sim_avg_return',       # RAG: avg return of similar patterns
         'sim_max_similarity',   # RAG: max cosine similarity score
+        # Lagged & Rolling (Task 1)
+        'returns_lag1', 'returns_lag2', 'returns_lag4',
+        'rsi_roll_mean_10', 'rsi_roll_std_10',
+        'macd_hist_roll_mean_10', 'macd_hist_roll_std_10',
+        'returns_roll_mean_10', 'returns_roll_std_10',
     ]
     # REMOVED: 'ema10', 'ema50' (raw prices → memorization risk)
     # REMOVED: 'bb_upper', 'bb_lower' (raw prices → memorization risk)
     
+    target_col = 'target_3bar' if 'target_3bar' in train_df.columns else 'next_5m_direction'
+    print(f"  Target variable: {target_col}")
     X = train_df[feature_cols].values
-    y = train_df['next_5m_direction'].values
+    y = train_df[target_col].values
     
     # =====================================================================
     # FIX #4: Walk-Forward CV with PURGE GAP to prevent look-ahead bias
