@@ -102,7 +102,18 @@ with tab1:
     st.components.v1.html(tradingview_html, height=510)
 
 with tab2:
-    st.plotly_chart(fig, use_container_width=True)
+    if not df.empty:
+        fig = go.Figure(data=[go.Candlestick(
+            x=df.index,
+            open=df['open'],
+            high=df['high'],
+            low=df['low'],
+            close=df['close']
+        )])
+        fig.update_layout(xaxis_rangeslider_visible=False, height=500, template="plotly_dark")
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("No market data available to render the candlestick chart.")
 
 
 # Controls

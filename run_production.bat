@@ -16,18 +16,18 @@ echo [2/3] Waiting 5 seconds for API models to load...
 timeout /t 5 > nul
 
 echo.
-echo [3/3] Starting Streamlit Dashboard on port 8501...
-start "XAUUSD Predictor Dashboard" cmd /k "python -m streamlit run dashboard/app.py --server.port 8501"
+echo [3/3] Starting React Vite Frontend on port 5173...
+start "XAUUSD Predictor Frontend" cmd /k "npm run dev --prefix frontend"
 
 echo.
 echo ===================================================
 echo ✅ Production services launched successfully!
 echo.
 echo 🌐 API Endpoint:   http://127.0.0.1:8000
-echo 🌐 Dashboard URL:  http://127.0.0.1:8501
+echo 🌐 Frontend URL:   http://localhost:5173
 echo ===================================================
 echo.
 echo Note: Live server logs are running in the newly opened windows.
-echo To stop the services, simply close the open CMD windows.
+echo To stop the services, close the open CMD windows or run: taskkill /F /IM python.exe /T
 echo.
 pause

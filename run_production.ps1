@@ -14,11 +14,11 @@ Start-Process python -ArgumentList "-m uvicorn api.main:app --host 0.0.0.0 --por
 Write-Host "Waiting 10s for models to load..."
 Start-Sleep -Seconds 10
 
-# 3. Start Streamlit Dashboard
-Write-Host "Starting Dashboard on port 8501..." -ForegroundColor Green
-Start-Process streamlit -ArgumentList "run dashboard/app.py --server.port 8501" -WindowStyle Hidden -PassThru
+# 3. Start React Vite Frontend
+Write-Host "Starting React Frontend on port 5173..." -ForegroundColor Green
+Start-Process cmd -ArgumentList "/c npm run dev --prefix frontend" -WindowStyle Hidden -PassThru
 
 Write-Host "`n✅ System is now running in the background!" -ForegroundColor White
 Write-Host "API: http://localhost:8000"
-Write-Host "Dashboard: http://localhost:8501"
+Write-Host "Frontend: http://localhost:5173"
 Write-Host "`nTo stop everything, run: taskkill /F /IM python.exe /T" -ForegroundColor Gray

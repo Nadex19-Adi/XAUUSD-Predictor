@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Security, Depends, Request
 from fastapi.security.api_key import APIKeyHeader, APIKey
+from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -25,6 +26,16 @@ async def get_api_key(api_key: str = Security(api_key_header)):
 # Rate Limiting
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="XAUUSD Predictor API v2.1")
+
+# Configure CORS Middleware for React Integration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
