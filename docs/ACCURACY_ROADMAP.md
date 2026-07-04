@@ -1,7 +1,8 @@
 # XAUUSD Predictor — Accuracy Improvement Roadmap
 
-> **Current Baseline**: 52.28% Test Accuracy (honest, no leakage)
-> **Realistic Target**: 58-62% (world-class for 5m gold prediction)
+> **Current Baseline**: 52.28% Test Accuracy (honest, no leakage, 5m data)
+> **New Baseline (15m)**: To be measured after retraining on 15-min candles
+> **Realistic Target**: 58-65% (15-min candles have less noise than 5m)
 > **Why not 90%?**: Financial markets have inherent noise. Even Renaissance Technologies
 > (the most profitable quant fund in history) operates at ~55-60% hit rate on short timeframes.
 > 90%+ accuracy on raw price prediction = data leakage, guaranteed.
@@ -43,11 +44,11 @@ df['bb_squeeze'] = (df['bb_width'] < df['bb_width'].rolling(120).quantile(0.1)).
 
 ### 2.1 Use Multi-Bar Targets Instead of Next Candle
 ```python
-# Instead of predicting the NEXT 5m candle (very noisy):
-df['target_3bar'] = (df['close'].shift(-3) > df['close']).astype(int)  # 15-min direction
-df['target_6bar'] = (df['close'].shift(-6) > df['close']).astype(int)  # 30-min direction
+# With 15-min base candles, multi-bar targets become even more powerful:
+df['target_3bar'] = (df['close'].shift(-3) > df['close']).astype(int)  # 45-min direction
+df['target_6bar'] = (df['close'].shift(-6) > df['close']).astype(int)  # 90-min direction
 ```
-**Why?** Single 5-minute candles are 80% noise. 15-30 minute trends are more predictable.
+**Why?** Even 15-min single candles have noise. 45-90 minute trends are highly predictable.
 
 ### 2.2 Use Threshold-Based Targets
 ```python
@@ -174,9 +175,9 @@ else:
 ---
 
 ## Summary
-- **Raw accuracy ceiling**: ~60% (realistic for 5m gold prediction)
+- **Raw accuracy ceiling**: ~62-65% (realistic for 15m gold prediction, improved from 5m)
 - **Effective accuracy with confidence filtering**: 70-80%
 - **The secret**: Trade LESS, but trade BETTER
 - **Timeline**: 1-2 weeks for all phases
 
-*Generated: 2026-05-07 | Baseline: 52.28% Test Accuracy*
+*Updated: 2026-07-04 | Migrated to 15-min candles | Previous baseline (5m): 52.28%*

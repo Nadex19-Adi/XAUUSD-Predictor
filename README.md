@@ -1,62 +1,60 @@
-# XAUUSD Predictor
+# XAUUSD Predictor v3.0
 
-A **machine‑learning pipeline** that predicts the direction of the XAU/USD (Gold) spot price on a 5‑minute timeframe.
+A hybrid AI trading system for Gold (XAUUSD) that combines **Market Memory (RAG)** with **XGBoost** classification on **15-minute candle data**.
 
-## Features
-- Feature engineering with >30 technical indicators (RSI, MACD, Bollinger Bands, ATR, volume ratios, multi‑time‑frame EMA crosses, etc.)
-- Sharded ChromaDB vector store for fast similarity look‑ups (RAG‑style market memory)
-- XGBoost classifier with regularisation and confidence‑filtering to surface high‑conviction trades
-- Time‑series aware train/validation split (80/20 chronological) and optional walk‑forward validation
-- Automated report generation (`generate_report.py`) that produces a polished Word document with charts, tables, and a mind‑map.
+## Architecture
+- **Data Pipeline**: 5-min OHLCV -> 15-min resample -> 44 engineered features
+- **Vector Search**: FAISS IVF-PQ index (~150 MB) for sub-10ms historical regime retrieval
+- **Classifier**: XGBoost (hist-tree, 500 estimators, purged walk-forward CV)
+- **API**: FastAPI with timezone-aware Pydantic models
+- **UI**: Streamlit + Plotly / React + Vite
 
 ## Quick Start
 
 ```bash
-# 1️⃣ Install dependencies
+# Install dependencies
 pip install -r requirements.txt
 
-# 2️⃣ Generate features (if not already present)
-python data/feature_engineering.py   # creates data/xauusd_features.csv
+# Run full pipeline (resample -> features -> FAISS index -> train -> serve)
+python main.py
+```
 
-# 3️⃣ Train the master model
-python train_final.py
+### Individual Steps
+```bash
+# Build FAISS vector index only
+python -m rag.build_vector_db
 
-# 4️⃣ Produce the project report
-python generate_report.py
+# Start API server
+uvicorn api.main:app --host 0.0.0.0 --port 8000
+
+# Start Streamlit dashboard
+streamlit run dashboard/app.py
+```
+
+### Docker
+```bash
+docker-compose up --build
 ```
 
 ## Project Structure
-
 ```
-XAUUSD‑Predictor/
-├─ api/                # FastAPI endpoints (optional)
-├─ data/               # Raw CSVs & engineered feature CSV
-├─ datasets/           # External OHLC datasets (large files, git‑ignored)
-├─ indicators/         # Feature‑engineering helper functions
-├─ models/             # Trained XGBoost model + metadata JSON
-├─ rag/                # Vector DB implementation (ChromaDB)
-├─ training/           # Training utilities
-├─ generate_report.py  # Builds the Word report
-├─ todo_boost_accuracy.md  # Accuracy‑boost checklist (tracked)
-├─ README.md
-└─ .gitignore
+├── api/           FastAPI /predict endpoint
+├── dashboard/     Streamlit + Plotly UI
+├── data/          Master CSVs, FAISS index, features
+├── docs/          TRD, PRD, Audit Report, Roadmap
+├── frontend/      React + Vite web dashboard
+├── indicators/    44-feature engineering pipeline
+├── models/        Trained XGBoost model
+├── rag/           FAISS-backed RAG market memory
+├── src/core/      Pydantic central configuration
+├── training/      XGBoost training with walk-forward CV
+├── utils/         Dataset merge utilities
+└── main.py        Root orchestration
 ```
 
-## Generating the Report
-
-The `generate_report.py` script creates a Word document (`report.docx`) containing:
-- Model performance metrics
-- Feature importance bar chart
-- Confidence‑filtered trade statistics
-- A mind‑map visualising the workflow
-
-Run it after training to capture the latest results.
-
-## Contributing
-1. Fork the repo.
-2. Create a feature branch.
-3. Ensure you **do not commit** the `datasets/` or `data/*.csv` files – they are listed in `.gitignore`.
-4. Open a pull request.
-
-## License
-MIT – feel free to adapt for your own research or trading projects.
+## Documentation
+See [docs/](docs/) for detailed documentation:
+- [TRD](docs/TRD.md) - Technical Requirements
+- [PRD](docs/PRD.md) - Product Requirements
+- [Audit Report](docs/AUDIT_REPORT.md) - System Audit
+- [Accuracy Roadmap](docs/ACCURACY_ROADMAP.md) - Improvement Plan

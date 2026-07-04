@@ -1,11 +1,11 @@
-import chromadb
-from chromadb.config import Settings
+import faiss
+import numpy as np
 from sentence_transformers import SentenceTransformer
 import pandas as pd
-import numpy as np
 import torch
 import time
 import os
+import shutil
 import psutil
 try:
     from pynvml import nvmlInit, nvmlDeviceGetHandleByIndex, nvmlDeviceGetTemperature, NVML_TEMPERATURE_GPU
@@ -14,7 +14,7 @@ except ImportError:
     HAS_NVML = False
 
 class MarketRAG:
-    def __init__(self, db_dir: str = "./data/chromadb"):
+    def __init__(self, index_dir: str = "./data/faiss"):
         # GPU Optimization (AMD DirectML or NVIDIA CUDA)
         self.device = "cpu"
         try:
@@ -39,43 +39,64 @@ class MarketRAG:
             print(f"Thermal Safety: Limiting torch to {safe_threads} threads.")
 
         self.model = SentenceTransformer('all-MiniLM-L6-v2', device=self.device)
-        self.client = chromadb.PersistentClient(path=db_dir)
+        
+        # FAISS Index Paths
+        self.index_dir = index_dir
+        self.index_path = os.path.join(index_dir, "market_memory.index")
+        self.metadata_path = os.path.join(index_dir, "metadata.parquet")
         
         # RESOURCE CAPS (R1 mitigation)
-        self.max_ram_gb = 14.0  # Fail/Warn if > 14GB
+        self.max_ram_gb = 15.0  # Increased to avoid false positives if system baseline RAM is high
         self.max_gpu_temp = 85  # Thermal safety (R7)
         if HAS_NVML:
             try: nvmlInit()
             except: pass
         
-        # Pass a dummy embedding function to avoid the default ONNX runtime initialization issue
-        class DummyEF:
-            def __call__(self, input): return [[0.0] * 384] * len(input)
-        self.dummy_ef = DummyEF()
-            
-        # Sharded Collections (Lazy Loaded)
-        self.collection_names = ["gold_legacy", "gold_mid", "gold_recent"]
-        self._collections = {}
+        # Lazy-loaded FAISS index and metadata
+        self._index = None
+        self._metadata = None
         self.master_csv = "./data/xauusd_features.csv" # For R4 fallback
-        print(f"MarketRAG initialized. Collections will be lazy-loaded.")
-
-    def get_collection(self, name: str):
-        if name not in self.collection_names:
-            raise ValueError(f"Invalid collection name: {name}")
         
-        if name not in self._collections:
-            print(f"Loading/Creating collection: {name}...")
-            # HNSW M=16 optimization for memory efficiency (Audit R1)
-            self._collections[name] = self.client.get_or_create_collection(
-                name=name,
-                embedding_function=self.dummy_ef,
-                metadata={
-                    "hnsw:space": "cosine", 
-                    "hnsw:M": 16, 
-                    "hnsw:construction_ef": 100
-                }
-            )
-        return self._collections[name]
+        print(f"MarketRAG initialized (FAISS backend). Index will be lazy-loaded from {index_dir}.")
+
+    def _load_index(self):
+        """Lazily loads the FAISS index and metadata into memory."""
+        if self._index is None:
+            if not os.path.exists(self.index_path):
+                raise FileNotFoundError(
+                    f"FAISS index not found at {self.index_path}. "
+                    f"Run `python -m rag.build_vector_db` to build it."
+                )
+            print(f"Loading FAISS index from {self.index_path}...")
+            self._index = faiss.read_index(self.index_path)
+            # Set search-time nprobe for IVF indexes (controls speed vs accuracy tradeoff)
+            if hasattr(self._index, 'nprobe'):
+                self._index.nprobe = 32  # Search 32 of 1024 clusters (good balance)
+            print(f"  FAISS index loaded: {self._index.ntotal} vectors, dimension={self._index.d}")
+        
+        if self._metadata is None:
+            if not os.path.exists(self.metadata_path):
+                raise FileNotFoundError(
+                    f"Metadata file not found at {self.metadata_path}. "
+                    f"Run `python -m rag.build_vector_db` to build it."
+                )
+            print(f"Loading metadata from {self.metadata_path}...")
+            self._metadata = pd.read_parquet(self.metadata_path)
+            print(f"  Metadata loaded: {len(self._metadata)} rows")
+        
+        return self._index, self._metadata
+
+    @property
+    def index_loaded(self) -> bool:
+        """Check whether the FAISS index is loaded."""
+        return self._index is not None
+
+    @property
+    def total_vectors(self) -> int:
+        """Returns total vectors in the loaded index, or 0 if not loaded."""
+        if self._index is not None:
+            return self._index.ntotal
+        return 0
 
     def check_resources(self):
         """
@@ -200,65 +221,142 @@ class MarketRAG:
             f"{macro_snippet}"
         )
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
-        return self.model.encode(texts).tolist()
+    def embed(self, texts: list[str]) -> np.ndarray:
+        """Encodes texts to embeddings. Returns np.float32 array."""
+        return self.model.encode(texts, convert_to_numpy=True).astype(np.float32)
 
-    def add_to_db(self, df: pd.DataFrame, collection_name: str, batch_size: int = 1000):
+    # =================================================================
+    # INDEX BUILDING (replaces add_to_db)
+    # =================================================================
+    def build_index(self, df: pd.DataFrame, batch_size: int = 5000):
         """
-        Adds historical data to a specific ChromaDB collection in batches.
-        Now stores volatility regime metadata for filtered retrieval.
+        Builds a FAISS IVF-PQ index from the full DataFrame.
+        Stores all vectors in a single compressed index file + metadata Parquet.
+        
+        This replaces the old add_to_db() method that wrote to ChromaDB collections.
         """
-        target_collection = self.get_collection(collection_name)
-
+        os.makedirs(self.index_dir, exist_ok=True)
         total = len(df)
+        print(f"\n=== Building FAISS Index for {total} rows ===")
+        
+        # --- Phase 1: Generate all embeddings in batches ---
+        print("Phase 1: Generating embeddings...")
+        all_embeddings = []
+        all_texts = []
+        
         for batch_start in range(0, total, batch_size):
-            batch_df = df.iloc[batch_start:batch_start+batch_size]
+            batch_df = df.iloc[batch_start:batch_start + batch_size]
             texts = [self.row_to_text(row) for _, row in batch_df.iterrows()]
             embeddings = self.embed(texts)
             
-            timestamps = [pd.to_datetime(idx).timestamp() for idx in batch_df.index]
+            all_embeddings.append(embeddings)
+            all_texts.extend(texts)
             
-            metadatas = []
-            for j, (idx, row) in enumerate(batch_df.iterrows()):
-                # Classify volatility regime for filtered RAG (Phase 4.2)
-                atr_pct = row.get('atr_percentile', 0.5)
-                if atr_pct > 0.7:
-                    regime = "high_vol"
-                elif atr_pct > 0.3:
-                    regime = "normal_vol"
-                else:
-                    regime = "low_vol"
-                
-                metadatas.append({
-                    "timestamp": float(timestamps[j]),
-                    "timestamp_str": str(idx),
-                    "actual_next_move": int(row['next_5m_direction']),
-                    "actual_return": float(row['next_return']),
-                    "regime": regime
-                })
-                
-            ids = [f"id_{ts}" for ts in timestamps]
-            
-            target_collection.upsert(
-                embeddings=embeddings,
-                documents=texts,
-                metadatas=metadatas,
-                ids=ids
-            )
-            # THERMAL & RESOURCE MONITORING
+            # Thermal & resource monitoring
             throttle = self.check_resources()
+            print(f"  Embedded batch {batch_start} to {batch_start + len(batch_df)} / {total}")
             
-            print(f"Added batch {batch_start} to {batch_start+len(batch_df)} / {total} to {collection_name}.")
-            
-            # Explicitly clear batch data to free memory
-            del texts, embeddings, metadatas, ids, timestamps
-            import gc
-            gc.collect()
-            
-            # THERMAL SAFETY: Sleep for 2 seconds (or 10 if throttling)
-            sleep_time = 10 if throttle else 2
-            print(f"Thermal Safety: Cooling down for {sleep_time} seconds...")
+            # Thermal safety cooldown
+            sleep_time = 5 if throttle else 1
             time.sleep(sleep_time)
+        
+        embeddings_matrix = np.vstack(all_embeddings).astype(np.float32)
+        dimension = embeddings_matrix.shape[1]  # 384 for all-MiniLM-L6-v2
+        print(f"  Total embeddings: {embeddings_matrix.shape}")
+        
+        # --- Phase 2: Build metadata DataFrame ---
+        print("Phase 2: Building metadata...")
+        timestamps = []
+        timestamp_strs = []
+        actual_moves = []
+        actual_returns = []
+        regimes = []
+        
+        for idx, row in df.iterrows():
+            ts_obj = pd.to_datetime(idx)
+            timestamps.append(float(ts_obj.timestamp()))
+            timestamp_strs.append(str(idx))
+            actual_moves.append(int(row['next_5m_direction']))
+            actual_returns.append(float(row['next_return']))
+            
+            # Classify volatility regime
+            atr_pct = row.get('atr_percentile', 0.5)
+            if atr_pct > 0.7:
+                regimes.append("high_vol")
+            elif atr_pct > 0.3:
+                regimes.append("normal_vol")
+            else:
+                regimes.append("low_vol")
+        
+        metadata_df = pd.DataFrame({
+            "timestamp": timestamps,
+            "timestamp_str": timestamp_strs,
+            "actual_next_move": actual_moves,
+            "actual_return": actual_returns,
+            "regime": regimes,
+            "document": all_texts
+        })
+        
+        # --- Phase 3: Train and build FAISS index ---
+        print("Phase 3: Building FAISS index...")
+        
+        n_vectors = embeddings_matrix.shape[0]
+        
+        # Normalize embeddings for cosine similarity
+        faiss.normalize_L2(embeddings_matrix)
+        
+        if n_vectors < 10000:
+            print(f"  Small dataset ({n_vectors} vectors), using IndexFlatIP instead of IVF-PQ")
+            index = faiss.IndexFlatIP(dimension)
+        else:
+            # IVF-PQ parameters tuned for 1.7M vectors, 384 dimensions
+            # Number of IVF clusters: sqrt(N) is a good heuristic, capped reasonably
+            n_clusters = min(int(np.sqrt(n_vectors)), 2048)
+            n_clusters = max(n_clusters, 64)  # Minimum 64 clusters
+            
+            # PQ sub-quantizers: dimension must be divisible by this
+            # 384 / 48 = 8 bytes per sub-quantizer
+            pq_m = 48  # Number of sub-quantizers
+            pq_bits = 8  # Bits per sub-quantizer code
+            
+            print(f"  IVF clusters: {n_clusters}, PQ sub-quantizers: {pq_m}, bits: {pq_bits}")
+            
+            # Build the index
+            quantizer = faiss.IndexFlatIP(dimension)  # Inner product (cosine after normalization)
+            index = faiss.IndexIVFPQ(quantizer, dimension, n_clusters, pq_m, pq_bits)
+            
+            # Train on a representative sample (up to 100k vectors)
+            train_size = min(n_vectors, 100000)
+            train_sample = embeddings_matrix[
+                np.random.choice(n_vectors, train_size, replace=False)
+            ]
+            
+            print(f"  Training on {train_size} sample vectors...")
+            index.train(train_sample)
+            
+        # Add all vectors
+        print(f"  Adding {n_vectors} vectors to index...")
+        index.add(embeddings_matrix)
+        
+        print(f"  Index built: {index.ntotal} vectors indexed")
+        
+        # --- Phase 4: Save ---
+        print("Phase 4: Saving index and metadata...")
+        faiss.write_index(index, self.index_path)
+        metadata_df.to_parquet(self.metadata_path, index=False)
+        
+        index_size_mb = os.path.getsize(self.index_path) / (1024 * 1024)
+        meta_size_mb = os.path.getsize(self.metadata_path) / (1024 * 1024)
+        
+        print(f"\n=== FAISS Index Build Complete ===")
+        print(f"  Index file: {self.index_path} ({index_size_mb:.1f} MB)")
+        print(f"  Metadata:   {self.metadata_path} ({meta_size_mb:.1f} MB)")
+        print(f"  Total:      {index_size_mb + meta_size_mb:.1f} MB (vs ~9,700 MB with ChromaDB)")
+        print(f"  Vectors:    {index.ntotal}")
+        
+        # Clear cached state to force reload on next query
+        self._index = None
+        self._metadata = None
 
     # =================================================================
     # PHASE 4.1 + 4.2: Recency-weighted, regime-filtered retrieval
@@ -267,16 +365,24 @@ class MarketRAG:
                          macro_snippet: str = "no major news", top_k: int = 5,
                          regime_filter: str = None, recency_weight: float = 0.15) -> dict:
         """
-        Retrieves similar past patterns from ALL sharded collections.
+        Retrieves similar past patterns using FAISS vector search.
         
         Enhancements (Phase 4):
         - recency_weight: Applies exponential decay so recent matches rank higher.
           0.0 = pure similarity, 1.0 = heavily favor recent data.
         - regime_filter: If set ("high_vol", "normal_vol", "low_vol"), only retrieves
           patterns from the same volatility regime.
+          
+        Returns the same dict format as the original ChromaDB implementation for
+        full backward compatibility.
         """
+        index, metadata = self._load_index()
+        
         query_text = self.row_to_text(pd.Series(current_row), macro_snippet)
         query_emb = self.embed([query_text])
+        
+        # Normalize query for cosine similarity (index was built with normalized vectors)
+        faiss.normalize_L2(query_emb)
         
         # Robust Timezone Fix: Handle any input (IST, Offset, etc.)
         ts_obj = pd.to_datetime(current_timestamp_str)
@@ -284,52 +390,22 @@ class MarketRAG:
             ts_obj = ts_obj.tz_convert('UTC').tz_localize(None)
         current_ts = ts_obj.timestamp()
         
-        all_metas = []
-        all_distances = []
-        all_docs = []
+        # Fetch extra candidates for post-filtering (FAISS doesn't support WHERE clauses)
+        # We fetch 10x the needed amount to ensure enough remain after timestamp/regime filtering
+        fetch_k = min(top_k * 10, index.ntotal)
         
-        # Build where filter
-        where_conditions = {"timestamp": {"$lt": current_ts}}
+        distances, indices = index.search(query_emb, fetch_k)
         
-        # Phase 4.2: Regime-filtered retrieval
-        if regime_filter:
-            where_conditions = {
-                "$and": [
-                    {"timestamp": {"$lt": current_ts}},
-                    {"regime": regime_filter}
-                ]
-            }
+        # Flatten results (search returns 2D arrays)
+        distances = distances[0]
+        indices = indices[0]
         
-        # Query each shard
-        for name in self.collection_names:
-            try:
-                col = self.get_collection(name)
-                results = col.query(
-                    query_embeddings=query_emb,
-                    n_results=top_k + 5,  # Fetch small extra for recency re-ranking
-                    where=where_conditions
-                )
-                
-                if results['metadatas'][0]:
-                    all_metas.extend(results['metadatas'][0])
-                    all_distances.extend(results['distances'][0])
-                    all_docs.extend(results['documents'][0])
-            except Exception as e:
-                # Graceful fallback if regime filter fails (e.g., old data without regime)
-                try:
-                    results = col.query(
-                        query_embeddings=query_emb,
-                        n_results=top_k,
-                        where={"timestamp": {"$lt": current_ts}}
-                    )
-                    if results['metadatas'][0]:
-                        all_metas.extend(results['metadatas'][0])
-                        all_distances.extend(results['distances'][0])
-                        all_docs.extend(results['documents'][0])
-                except:
-                    pass
+        # Filter out invalid indices (-1 means no result)
+        valid_mask = indices >= 0
+        distances = distances[valid_mask]
+        indices = indices[valid_mask]
         
-        if not all_metas:
+        if len(indices) == 0:
             return {
                 "sim_win_rate": 0.5,
                 "sim_avg_return": 0.0,
@@ -338,43 +414,77 @@ class MarketRAG:
                 "regime_used": regime_filter or "none"
             }
         
+        # Retrieve metadata for matched indices
+        matched_meta = metadata.iloc[indices]
+        
+        # POST-FILTER 1: Strict timestamp boundary (prevent data leakage / look-ahead)
+        time_mask = matched_meta['timestamp'].values < current_ts
+        
+        # POST-FILTER 2: Regime filter (Phase 4.2)
+        if regime_filter:
+            regime_mask = matched_meta['regime'].values == regime_filter
+            combined_mask = time_mask & regime_mask
+        else:
+            combined_mask = time_mask
+        
+        # Apply filters
+        filtered_distances = distances[combined_mask]
+        filtered_meta = matched_meta[combined_mask]
+        
+        if len(filtered_meta) == 0:
+            # Fallback: try without regime filter
+            if regime_filter:
+                filtered_distances = distances[time_mask]
+                filtered_meta = matched_meta[time_mask]
+            
+            if len(filtered_meta) == 0:
+                return {
+                    "sim_win_rate": 0.5,
+                    "sim_avg_return": 0.0,
+                    "sim_max_similarity": 0.0,
+                    "similar_patterns": [],
+                    "regime_used": regime_filter or "none"
+                }
+        
         # =============================================================
         # Phase 4.1: RECENCY-WEIGHTED re-ranking
-        # Combine cosine distance with time decay for smarter ranking
+        # Combine cosine similarity with time decay for smarter ranking
         # =============================================================
         combined = []
-        for dist, meta, doc in zip(all_distances, all_metas, all_docs):
-            # Cosine similarity (higher = better)
-            cosine_sim = 1.0 / (1.0 + dist)
+        for i in range(len(filtered_meta)):
+            meta_row = filtered_meta.iloc[i]
+            dist = filtered_distances[i]
+            
+            # For IVF-PQ with inner product, higher distance = more similar
+            cosine_sim = max(0.0, float(dist))
             
             # Recency score: exponential decay based on time gap
-            time_gap_days = (current_ts - meta['timestamp']) / 86400.0  # Convert to days
+            time_gap_days = (current_ts - meta_row['timestamp']) / 86400.0
             recency_score = np.exp(-time_gap_days / 365.0)  # 1-year half-life
             
             # Blended score (higher = better match)
             blended = (1.0 - recency_weight) * cosine_sim + recency_weight * recency_score
             
-            combined.append((blended, dist, meta, doc))
+            combined.append((blended, cosine_sim, meta_row))
         
         # Sort by blended score DESCENDING (highest = best)
         combined.sort(key=lambda x: x[0], reverse=True)
         combined = combined[:top_k]
         
-        final_blended, final_distances, final_metas, final_docs = zip(*combined)
-        
-        win_rate = np.mean([m['actual_next_move'] for m in final_metas])
-        avg_ret = np.mean([m['actual_return'] for m in final_metas])
-        max_sim = max(final_blended)
+        # Extract final results
+        win_rate = np.mean([c[2]['actual_next_move'] for c in combined])
+        avg_ret = np.mean([c[2]['actual_return'] for c in combined])
+        max_sim = max(c[0] for c in combined)
         
         patterns = []
-        for i in range(len(final_metas)):
+        for blended, raw_cosine, meta_row in combined:
             patterns.append({
-                "document": final_docs[i],
-                "timestamp": final_metas[i].get('timestamp_str', str(final_metas[i]['timestamp'])),
-                "move": final_metas[i]['actual_next_move'],
-                "similarity": float(final_blended[i]),
-                "regime": final_metas[i].get('regime', 'unknown'),
-                "raw_cosine": 1.0 / (1.0 + final_distances[i])
+                "document": meta_row.get('document', ''),
+                "timestamp": meta_row.get('timestamp_str', str(meta_row['timestamp'])),
+                "move": int(meta_row['actual_next_move']),
+                "similarity": float(blended),
+                "regime": meta_row.get('regime', 'unknown'),
+                "raw_cosine": float(raw_cosine)
             })
             
         return {
@@ -388,23 +498,29 @@ class MarketRAG:
     # =============================================================
     # PHASE 4.4: CORRUPTION RECOVERY & FALLBACK (R4)
     # =============================================================
-    def backup_db(self, backup_dir: str = "./data/chromadb_backups"):
+    def backup_db(self, backup_dir: str = "./data/faiss_backups"):
         """
-        Creates a timestamped checkpoint of the ChromaDB directory.
+        Creates a timestamped backup of the FAISS index and metadata files.
+        Much simpler than ChromaDB — just 2 files to copy.
         """
-        import shutil
+        from datetime import datetime
         os.makedirs(backup_dir, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d_%H%M")
-        target = os.path.join(backup_dir, f"chroma_backup_{ts}")
+        target = os.path.join(backup_dir, f"faiss_backup_{ts}")
+        os.makedirs(target, exist_ok=True)
+        
         try:
-            shutil.copytree(self.client._settings.persist_directory, target)
+            if os.path.exists(self.index_path):
+                shutil.copy2(self.index_path, os.path.join(target, "market_memory.index"))
+            if os.path.exists(self.metadata_path):
+                shutil.copy2(self.metadata_path, os.path.join(target, "metadata.parquet"))
             print(f"Backup successful: {target}")
         except Exception as e:
             print(f"Backup failed: {e}")
 
     def search_csv_fallback(self, current_row: dict, top_k: int = 5) -> dict:
         """
-        Statistical Baseline (R5): If ChromaDB is down/corrupt, search the master CSV
+        Statistical Baseline (R5): If FAISS index is missing/corrupt, search the master CSV
         using a simple Euclidean distance on key technical features.
         """
         if not os.path.exists(self.master_csv):

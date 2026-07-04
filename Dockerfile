@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
@@ -17,8 +17,5 @@ COPY . .
 # Expose ports for FastAPI (8000) and Streamlit (8501)
 EXPOSE 8000 8501
 
-# Copy a start script
-COPY start.sh .
-RUN chmod +x start.sh
-
-CMD ["./start.sh"]
+# Run the full pipeline
+CMD ["python", "main.py"]

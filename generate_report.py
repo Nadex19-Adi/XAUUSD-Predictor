@@ -96,7 +96,7 @@ def main():
         "XGBoost (Extreme Gradient Boosting) classifier to forecast gold spot price direction (UP/DOWN) over short-term holding periods. "
         "Unlike standard predictive systems that rely solely on lagging technical indicators, our hybrid framework augments the classifier by recalling the "
         "closest historical price regimes from a massive 13-year dataset (2010-2026) encompassing over 1.7 million rows of 5-minute candles. "
-        "By utilizing dense, multi-dimensional embeddings (via sentence-transformers' all-MiniLM-L6-v2) stored inside a sharded ChromaDB vector store, "
+        "By utilizing dense, multi-dimensional embeddings (via sentence-transformers' all-MiniLM-L6-v2) stored inside a FAISS IVF-PQ vector index, "
         "our system retrieves historical trading analogues to guide the XGBoost supervised learner, making predictions highly robust and explainable.")
 
     doc.add_page_break()
@@ -128,7 +128,7 @@ def main():
     add_heading_styled(doc, "3. Objectives of the Project", level=1)
     add_paragraph_styled(doc, "The key objectives of this project are:")
     add_paragraph_styled(doc, "Design a modular system that combines similarity search vector databases (RAG) with supervised tree-based GBDTs (XGBoost) for financial signal generation.", bold_prefix="1. Hybrid Machine Learning Architecture: ")
-    add_paragraph_styled(doc, "Index over 1.7 million rows (13 years) of high-frequency XAUUSD 5-minute data into a custom 3-shard database structure (gold_legacy, gold_mid, gold_recent) to bypass memory constraints and prevent OOM errors under 16GB RAM limits.", bold_prefix="2. Memory-Safe Database Sharding: ")
+    add_paragraph_styled(doc, "Index over 1.7 million rows (13 years) of high-frequency XAUUSD 5-minute data into a compressed FAISS IVF-PQ vector index (~150 MB) to bypass memory constraints and prevent OOM errors under 16GB RAM limits.", bold_prefix="2. Memory-Safe Vector Indexing: ")
     add_paragraph_styled(doc, "Utilize Hist-based gradient boosted decision trees to output directional probability signals, using confidence filtering to isolate high-probability trades (>65% confidence).", bold_prefix="3. Precision-Focused Directional Prediction: ")
     add_paragraph_styled(doc, "Incorporate CPU/GPU thread limiting (in PyTorch) and batch pauses (cooldown delays) to ensure the system is physically stable during high-stress vector database builds.", bold_prefix="4. Hardware Safety & Thermal Control: ")
     add_paragraph_styled(doc, "Design and serve a FastAPI backend for low-latency (/predict in <100ms) signal routing and an interactive Streamlit GUI to display historical analogues.", bold_prefix="5. Live Monitoring & Deployment: ")
@@ -141,7 +141,7 @@ def main():
     add_paragraph_styled(doc, "The scope of this project covers the entire machine learning pipeline, from data raw ingestion to deployment:")
     add_paragraph_styled(doc, "Developing a script to merge separate historical Kaggle sets into a single 135 MB master dataset (1.7M rows, 2010-2026), resampling all candles to a standardized 5-minute OHLC format in UTC time.", bold_prefix="• Data Ingestion and Timezone Alignment: ")
     add_paragraph_styled(doc, "Calculating 14 base technical analysis indicators representing volatility, trend, momentum, and custom candlestick geometry (such as wick-to-body ratios).", bold_prefix="• Engineered Volatility and Momentum Space: ")
-    add_paragraph_styled(doc, "Creating a sharding utility to embed features in chunks using the SentenceTransformers all-MiniLM-L6-v2 model and storing them in ChromaDB. Lookup query relies on lookahead protection ($lt strict timestamp boundary) to prevent data leakage.", bold_prefix="• Past-Only Sharded Pattern Memory: ")
+    add_paragraph_styled(doc, "Creating an embedding utility to encode features using the SentenceTransformers all-MiniLM-L6-v2 model and indexing them in a FAISS IVF-PQ vector index. Lookup query relies on strict timestamp post-filtering to prevent data leakage.", bold_prefix="• Past-Only Pattern Memory: ")
     add_paragraph_styled(doc, "Training a robust Hist-based XGBoost model over 1.3 million historical samples using Purged Walk-Forward Cross-Validation, ensuring zero lookahead leakage.", bold_prefix="• Walk-Forward Classifier Optimization: ")
     add_paragraph_styled(doc, "Creating high-speed web services utilizing FastAPI and Streamlit to serve traders with instant predictions and matching price-chart regimes.", bold_prefix="• Enterprise REST and Dashboard Layer: ")
 
@@ -159,8 +159,8 @@ def main():
         "We build a 22-dimensional feature vector. This features momentum indicators (RSI, MACD, MACD Histogram), trend indicators (Exponential Moving Averages), volatility indicators (Bollinger Bands, Bollinger Width, Average True Range), and candlestick geometries (body ratio, upper wick ratio, lower wick ratio) to represent current price structures.",
         bold_prefix="Phase 2: High-Dimensional Feature Engineering. ")
     add_paragraph_styled(doc, 
-        "Due to local memory limits, the 1.7M rows of feature vectors are sharded into three databases: 'gold_legacy' (earliest data), 'gold_mid' (intermediate data), and 'gold_recent' (recent data). We map these vectors to 384-dimensional dense vectors using sentence-transformers, applying a PyTorch thread throttle and cooldowns to maintain workstation CPU temperatures under 85°C. At query time, we perform a cosine similarity search across these shards, filtering for historical twins that occurred strictly before the query's timestamp to prevent lookahead bias.",
-        bold_prefix="Phase 3: Sharded Memory DB & Safe RAG. ")
+        "The 1.7M rows of feature vectors are indexed into a single FAISS IVF-PQ compressed index (~150 MB RAM). We map these vectors to 384-dimensional dense vectors using sentence-transformers, applying a PyTorch thread throttle and cooldowns to maintain workstation CPU temperatures under 85°C. At query time, we perform a cosine similarity search via FAISS, followed by a NumPy post-filter that enforces strict timestamp boundaries to prevent lookahead bias.",
+        bold_prefix="Phase 3: FAISS Market Memory & Safe RAG. ")
     add_paragraph_styled(doc, 
         "An XGBoost classifier using a Hist-based histogram split finder is trained on over 1.3 million samples. The training inputs include our engineered features combined with RAG-retrieved historical regimes similarity indexes. Purged walk-forward validation splits are leveraged to prevent overfitting and measure generalization accurately.",
         bold_prefix="Phase 4: Walk-Forward Classifier Training. ")
@@ -175,7 +175,7 @@ def main():
     add_heading_styled(doc, "6. Flow Chart", level=1)
     add_paragraph_styled(doc, 
         "The Flow Chart below illustrates the path of market data as it moves through ingestion, timezone normalization, feature calculations, "
-        "sharded vector indexing in ChromaDB, training in XGBoost, and delivery through endpoints to Streamlit:")
+        "sharded vector indexing in FAISS, training in XGBoost, and delivery through endpoints to Streamlit:")
     if os.path.exists("flowchart.png"):
         doc.add_picture("flowchart.png", width=Inches(6.0))
         p_cap = doc.add_paragraph()
@@ -231,7 +231,7 @@ def main():
         ["Language", "Python 3.11", "Central codebase, scripts, and library execution."],
         ["Data Processing", "Pandas, NumPy, yfinance", "High-frequency time-series ingestion, resampling, and OHLC handling."],
         ["Technical Analysis", "ta library", "Custom feature engineering (RSI, MACD, BB, ATR indicators)."],
-        ["Vector database (RAG)", "ChromaDB, SentenceTransformers", "Storing and retrieving 1.7M+ historical market regime vectors via cosine similarity."],
+        ["Vector index (RAG)", "FAISS, SentenceTransformers", "Storing and retrieving 1.7M+ historical market regime vectors via cosine similarity (~150 MB)."],
         ["Machine Learning", "XGBoost, Scikit-learn", "Building and training Hist-based supervised classifier trees with Walk-Forward splits."],
         ["API Framework", "FastAPI, Uvicorn, Pydantic", "Sub-100ms prediction hosting, timezone auto-fix, and input model checks."],
         ["Dashboard GUI", "Streamlit, Plotly", "Interactive charting, system metrics monitor, and analogous past twin views."],
@@ -364,7 +364,7 @@ def main():
     
     add_paragraph_styled(doc, 
         "The repository contains step-by-step setup guides, central Pydantic configurations (config.py), "
-        "the 3-shard pipeline build commands, and details to deploy the docker container services locally or via cloud clusters.")
+        "the FAISS index build commands, and details to deploy the docker container services locally or via cloud clusters.")
 
     doc.add_page_break()
 
@@ -374,8 +374,8 @@ def main():
     add_paragraph_styled(doc, 
         "The XAUUSD RAG Predictor demonstrates a successful and innovative convergence of modern supervised machine learning "
         "and NLP vector-similarity technologies. By combining the predictive performance of a walk-forward trained XGBoost classifier "
-        "with a sharded 'Market Memory' ChromaDB database, the system successfully tackles high-frequency market noise. "
-        "It overcomes local hardware limits (OOM and CPU/GPU thermal safety) via dynamic database sharding and PyTorch thread limiting.")
+        "with a FAISS-backed 'Market Memory' vector index, the system successfully tackles high-frequency market noise. "
+        "It overcomes local hardware limits (OOM and CPU/GPU thermal safety) via FAISS Product Quantization compression and PyTorch thread limiting.")
     add_paragraph_styled(doc, 
         "Our findings highlight the immense value of confidence filtering: isolating signals to periods of >65% model probability "
         "allows the system to achieve an exceptional 83.92% prediction accuracy, which is considered state-of-the-art for high-frequency "

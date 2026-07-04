@@ -39,3 +39,6 @@ mindmap.png
 # Temporary files
 *.log
 *.tmp
+
+# Virtual environment
+.venv/

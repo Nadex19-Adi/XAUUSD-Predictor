@@ -1,106 +1,105 @@
-# 📚 XAUUSD RAG Predictor — Quick Docs Overview
+# Project Documentation Overview
 
-> **Last Updated**: 2026-05-07 04:12 PM IST | **All Shards**: ✅ Complete | **Total Records**: 1,687,267
+## Document Inventory
 
----
+| Document | Status | Path |
+|----------|--------|------|
+| README (Root) | Updated | `README.md` |
+| README (Docs) | Updated | `docs/README.md` |
+| TRD | Updated | `docs/TRD.md` |
+| PRD | Updated | `docs/PRD.md` |
+| Audit Report | Updated | `docs/AUDIT_REPORT.md` |
+| Accuracy Roadmap | Updated | `docs/ACCURACY_ROADMAP.md` |
+| Project Monitor | Active | `docs/PROJECT_MONITOR.md` |
 
-## 🗺️ Doc Index
-| File | What's Inside |
-|------|---------------|
-| [README.md](./README.md) | Setup, install, run commands |
-| [PRD.md](./PRD.md) | Business goals & product requirements |
-| [TRD.md](./TRD.md) | Architecture, sharding, model config |
-| [AUDIT_REPORT.md](./AUDIT_REPORT.md) | Real-world sustainability & risk audit |
-| [PROJECT_MONITOR.md](./PROJECT_MONITOR.md) | Live ops dashboard (shard status) |
+## System Architecture (v3.0)
 
----
-
-## ⚡ Pipeline Health Check (Verified 04:12 PM)
-
-### ✅ Data Layer
-| Component | Status | Details |
-|-----------|--------|---------|
-| Master CSV | ✅ | `data/xauusd_master_5m.csv` (135 MB) |
-| Feature CSV | ✅ | `data/xauusd_features.csv` (478 MB, 1.7M rows, 14 indicators) |
-| ChromaDB | ✅ | `data/chromadb/` (9.7 GB, 3 shards, 1.68M vectors) |
-
-### ✅ Model Layer
-| Component | Status | Details |
-|-----------|--------|---------|
-| XGBoost (json) | ✅ | `models/xgb_model.json` (49 KB) — Walk-Forward trained |
-| XGBoost (bst) | ✅ | `models/xauusd_model.bst` (4 MB) — 1000-estimator master model |
-
-### ✅ Application Layer
-| Component | Status | Details |
-|-----------|--------|---------|
-| FastAPI | ✅ | `api/main.py` — `/predict` endpoint with timezone auto-fix |
-| Streamlit | ✅ | `dashboard/app.py` — Live chart + RAG analogues |
-| Config | ✅ | `src/core/config.py` — Pydantic-based central settings |
-
-### ✅ Intelligence Layer
-| Component | Status | Details |
-|-----------|--------|---------|
-| Feature Engine | ✅ | `indicators/feature_engineering.py` — RSI, MACD, ATR, BB, EMA |
-| RAG Engine | ✅ | `rag/rag_engine.py` — Cosine similarity, top-5 recall |
-| Shard Builder | ✅ | `rag/build_vector_db.py` — 3-shard with GC + batch=5000 |
-| Training | ✅ | `training/train.py` + `train_final.py` — Walk-Forward CV |
-
----
-
-## ⚠️ Critical Findings
-
-### 🔴 metrics.txt shows 100% accuracy — THIS IS A RED FLAG!
 ```
-Walk-Forward Validation Results (6 splits):
-Average Accuracy:  1.0000
-Average Precision: 1.0000
-Average Recall:    1.0000
+5-Min CSV (2.4M rows)
+    |
+    v
+15-Min Resample (800K rows)  <-- pd.resample("15min")
+    |
+    v
+Feature Engineering (44 cols) <-- indicators/feature_engineering.py
+    |
+    +---> FAISS Index Build    <-- rag/build_vector_db.py
+    |         |
+    |         v
+    |     FAISS IVF-PQ (~150MB) <-- data/faiss/
+    |
+    +---> XGBoost Training     <-- training/train.py
+              |
+              v
+          xgb_model.json       <-- models/
+              |
+              v
+          FastAPI /predict     <-- api/main.py
+              |
+              v
+          Streamlit Dashboard  <-- dashboard/app.py
 ```
-**Why it's a problem**: Perfect metrics = **data leakage** or **target leak** in the training pipeline. No model achieves 100% on financial data. This needs immediate investigation.
 
-**Likely cause**: `next_5m_direction` is computed from `close.shift(-1)` which may be leaking into feature columns during walk-forward splits.
+## Project Structure
 
-### 🟡 config.py still references old collection name
-`COLLECTION_NAME: str = "gold_patterns"` — but actual shards are `gold_legacy`, `gold_mid`, `gold_recent`. Config needs updating for shard-aware queries.
-
-### 🟡 No train/test split in `train_final.py`
-`model.fit(X, y)` trains on the **entire** 1.7M dataset with no holdout set. No way to measure real generalization performance.
-
----
-
-## 🏗️ Project Structure (Verified)
 ```
 XAUUSD predictor/
-├── api/main.py              # FastAPI backend
-├── dashboard/app.py         # Streamlit UI
+├── api/
+│   ├── __init__.py
+│   └── main.py                 # FastAPI app with /predict endpoint
+├── dashboard/
+│   ├── __init__.py
+│   └── app.py                  # Streamlit UI
 ├── data/
-│   ├── xauusd_master_5m.csv # 135 MB raw OHLC
-│   ├── xauusd_features.csv  # 478 MB engineered features
-│   ├── data_loader.py       # yfinance + CSV loader
-│   └── chromadb/            # 9.7 GB vector store (3 shards)
+│   ├── __init__.py
+│   ├── data_loader.py          # CSV loader utility
+│   ├── xauusd_master_5m.csv    # Source 5-min data (2.4M rows)
+│   ├── xauusd_master_15m.csv   # Resampled 15-min data (800K rows)
+│   ├── xauusd_features.csv     # Engineered features (44 columns)
+│   └── faiss/                  # FAISS index + metadata
+│       ├── market_memory.index
+│       └── metadata.parquet
+├── docs/                       # All documentation
+├── frontend/                   # React + Vite web dashboard
 ├── indicators/
-│   └── feature_engineering.py  # 14 technical indicators
+│   ├── __init__.py
+│   └── feature_engineering.py  # 44-feature engineering pipeline
 ├── models/
-│   ├── xgb_model.json       # 49 KB (walk-forward)
-│   └── xauusd_model.bst     # 4 MB (1000-tree master)
+│   ├── __init__.py
+│   └── xgb_model.json          # Trained XGBoost model
 ├── rag/
-│   ├── rag_engine.py        # MarketRAG class
-│   └── build_vector_db.py   # Sharded builder
-├── src/core/config.py       # Pydantic settings
-├── training/train.py        # Walk-forward training
-├── train_final.py           # Full-dataset master training
-├── main.py                  # Orchestration entry point
-├── Dockerfile               # Container support
-├── docker-compose.yml       # Multi-service orchestration
-├── requirements.txt         # Dependencies
-└── docs/                    # You are here! 📍
+│   ├── __init__.py
+│   ├── rag_engine.py           # FAISS-backed RAG engine
+│   └── build_vector_db.py      # FAISS index builder
+├── src/
+│   └── core/
+│       ├── __init__.py
+│       └── config.py           # Pydantic Settings (central config)
+├── training/
+│   ├── __init__.py
+│   └── train.py                # XGBoost training pipeline
+├── utils/
+│   ├── __init__.py
+│   └── merge_datasets.py       # Dataset merge utility
+├── main.py                     # Root orchestration (5m->15m->features->train->serve)
+├── requirements.txt
+├── Dockerfile
+├── docker-compose.yml
+├── generate_report.py          # DOCX report generator
+├── .env.example
+└── .gitignore
 ```
 
----
+## Key Components
 
-## 🎯 Next Steps (Priority Order)
-1. 🔴 **FIX DATA LEAKAGE** — Investigate 100% accuracy in `metrics.txt`
-2. 🟡 **Update config.py** — Add shard-aware collection names
-3. 🟡 **Add holdout test** in `train_final.py` — at minimum 80/20 split
-4. 📅 **Retrain XGBoost** on clean sharded features
-5. 📅 **Launch API + Dashboard** for live signals
+| Component | File | Purpose |
+|-----------|------|---------|
+| Orchestrator | `main.py` | Full pipeline: resample, features, index, train, serve |
+| Config | `src/core/config.py` | Pydantic Settings with all paths and hyperparams |
+| Features | `indicators/feature_engineering.py` | 44-feature engineering from OHLCV |
+| RAG Engine | `rag/rag_engine.py` | FAISS-backed market memory with thermal safety |
+| Index Builder | `rag/build_vector_db.py` | Single unified IVF-PQ index builder |
+| Trainer | `training/train.py` | XGBoost with walk-forward CV |
+| API | `api/main.py` | FastAPI /predict with timezone normalization |
+| Dashboard | `dashboard/app.py` | Streamlit + Plotly live visualization |
+| Report Gen | `generate_report.py` | DOCX report generator for submissions |

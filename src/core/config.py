@@ -7,19 +7,19 @@ class Settings(BaseSettings):
     
     # Data Configs
     SYMBOL: str = "GC=F"
-    TIMEFRAME: str = "5m"
+    TIMEFRAME: str = "15m"
     HISTORY_PERIOD: str = "60d"
-    MASTER_DATA_PATH: str = "./data/xauusd_master_5m.csv"
+    MASTER_5M_PATH: str = "./data/xauusd_master_5m.csv"
+    MASTER_15M_PATH: str = "./data/xauusd_master_15m.csv"
     FEATURES_DATA_PATH: str = "./data/xauusd_features.csv"
     
-    # ChromaDB Configs (Shard-Aware)
-    CHROMA_PERSIST_DIR: str = "./data/chromadb"
-    SHARD_COLLECTIONS: List[str] = ["gold_legacy", "gold_mid", "gold_recent"]
+    # FAISS Vector Index Configs
+    FAISS_INDEX_PATH: str = "./data/faiss/market_memory.index"
+    FAISS_METADATA_PATH: str = "./data/faiss/metadata.parquet"
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     
     # Model Configs
     XGB_MODEL_PATH: str = "./models/xgb_model.json"
-    XGB_MASTER_MODEL_PATH: str = "./models/xauusd_model.bst"
     
     # MT5 Configs
     MT5_LOGIN: Optional[int] = None

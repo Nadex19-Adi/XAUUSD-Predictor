@@ -216,8 +216,9 @@ def health():
         "models": {
             "predictor_loaded": model is not None,
             "rag_loaded": rag is not None,
-            "active_shards": list(rag._collections.keys()) if rag else [],
-            "version": "2.1-Production"
+            "rag_backend": "FAISS",
+            "total_vectors": rag.total_vectors if rag else 0,
+            "version": "2.2-FAISS"
         },
         "timestamp": datetime.utcnow().isoformat()
     }
