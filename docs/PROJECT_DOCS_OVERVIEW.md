@@ -11,6 +11,7 @@
 | Audit Report | Updated | `docs/AUDIT_REPORT.md` |
 | Accuracy Roadmap | Updated | `docs/ACCURACY_ROADMAP.md` |
 | Project Monitor | Active | `docs/PROJECT_MONITOR.md` |
+| DGX Setup Guide | Active | `docs/DGX_SETUP_GUIDE.md` |
 
 ## System Architecture (v3.0)
 
